@@ -205,7 +205,7 @@ export const createChat = async (req, res) => {
     if (!Array.isArray(members) || members.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "Members array is required",
+        message: "Members array is required and must not be empty",
       });
     }
 
@@ -220,6 +220,29 @@ export const createChat = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Group chat must have a name",
+      });
+    }
+
+    const memberUsers = await prisma.user.findMany({
+      where: {
+        id: {
+          in: members,
+        },
+      },
+      select: {
+        id: true,
+        username: true,
+        firstName: true,
+        lastName: true,
+      },
+    });
+
+    if (memberUsers.length !== members.length) {
+      const foundIds = memberUsers.map((user) => user.id);
+      const missingIds = members.filter((id) => !foundIds.includes(id));
+      return res.status(400).json({
+        success: false,
+        message: `Some users not found: ${missingIds.join(", ")}`,
       });
     }
 
@@ -248,15 +271,75 @@ export const createChat = async (req, res) => {
               },
             },
           },
+          creator: {
+            select: {
+              id: true,
+              username: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+          messages: {
+            take: 1,
+            orderBy: { createdAt: "desc" },
+            include: {
+              sender: {
+                select: {
+                  id: true,
+                  username: true,
+                  firstName: true,
+                },
+              },
+            },
+          },
+          _count: {
+            select: {
+              messages: {
+                where: {
+                  isRead: false,
+                  senderId: { not: req.user.id },
+                },
+              },
+            },
+          },
         },
       });
 
       if (existingChat) {
         console.log("Chat already exists, returning existing chat");
+
+        const otherMember = existingChat.members.find(
+          (member) => member.userId !== req.user.id
+        );
+
+        const formattedChat = {
+          id: existingChat.id,
+          name: existingChat.isGroup
+            ? existingChat.name
+            : `${otherMember?.user.firstName} ${
+                otherMember?.user.lastName || ""
+              }`.trim(),
+          avatar: existingChat.isGroup
+            ? existingChat.avatar
+            : otherMember?.user.avatar,
+          isGroup: existingChat.isGroup,
+          description: existingChat.description,
+          isOnline: existingChat.isGroup ? false : otherMember?.user.isOnline,
+          lastSeen: existingChat.isGroup ? null : otherMember?.user.lastSeen,
+          lastMessage: existingChat.messages[0] || null,
+          unreadCount: existingChat._count.messages,
+          members: existingChat.members,
+          creator: existingChat.creator,
+          createdAt: existingChat.createdAt,
+          updatedAt: existingChat.updatedAt,
+        };
+
         return res.json({
           success: true,
           message: "Chat retrieved successfully",
-          data: { chat: existingChat },
+          data: {
+            chat: formattedChat,
+          },
         });
       }
     }
@@ -269,7 +352,7 @@ export const createChat = async (req, res) => {
           { userId: req.user.id, role: "ADMIN" },
           ...members.map((memberId) => ({
             userId: memberId,
-            role: "MEMBER",
+            role: isGroup ? "MEMBER" : "MEMBER",
           })),
         ],
       },
@@ -283,9 +366,9 @@ export const createChat = async (req, res) => {
       chatData.description = description.trim();
     }
 
-    console.log("Creating chat with Prisma data:", chatData);
+    console.log("Creating new chat with Prisma data:", chatData);
 
-    const chat = await prisma.chat.create({
+    const newChat = await prisma.chat.create({
       data: chatData,
       include: {
         members: {
@@ -303,22 +386,94 @@ export const createChat = async (req, res) => {
             },
           },
         },
+        creator: {
+          select: {
+            id: true,
+            username: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+        messages: {
+          take: 1,
+          orderBy: { createdAt: "desc" },
+          include: {
+            sender: {
+              select: {
+                id: true,
+                username: true,
+                firstName: true,
+              },
+            },
+          },
+        },
+        _count: {
+          select: {
+            messages: {
+              where: {
+                isRead: false,
+                senderId: { not: req.user.id },
+              },
+            },
+          },
+        },
       },
     });
 
-    console.log("Chat created successfully:", chat.id);
+    console.log("New chat created successfully:", newChat.id);
+
+    const otherMember = newChat.members.find(
+      (member) => member.userId !== req.user.id
+    );
+
+    const formattedChat = {
+      id: newChat.id,
+      name: newChat.isGroup
+        ? newChat.name
+        : `${otherMember?.user.firstName} ${
+            otherMember?.user.lastName || ""
+          }`.trim(),
+      avatar: newChat.isGroup ? newChat.avatar : otherMember?.user.avatar,
+      isGroup: newChat.isGroup,
+      description: newChat.description,
+      isOnline: newChat.isGroup ? false : otherMember?.user.isOnline,
+      lastSeen: newChat.isGroup ? null : otherMember?.user.lastSeen,
+      lastMessage: newChat.messages[0] || null,
+      unreadCount: newChat._count.messages,
+      members: newChat.members,
+      creator: newChat.creator,
+      createdAt: newChat.createdAt,
+      updatedAt: newChat.updatedAt,
+    };
 
     res.status(201).json({
       success: true,
       message: "Chat created successfully",
-      data: { chat },
+      data: {
+        chat: formattedChat,
+      },
     });
   } catch (error) {
     console.error("Create chat error:", error);
+
+    if (error.code === "P2002") {
+      return res.status(400).json({
+        success: false,
+        message: "Chat already exists with these members",
+      });
+    }
+
+    if (error.code === "P2025") {
+      return res.status(400).json({
+        success: false,
+        message: "One or more users not found",
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message,
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };

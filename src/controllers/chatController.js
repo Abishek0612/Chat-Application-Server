@@ -185,6 +185,7 @@ export const createChat = async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.error("Validation errors:", errors.array());
       return res.status(400).json({
         success: false,
         message: "Validation errors",
@@ -192,7 +193,21 @@ export const createChat = async (req, res) => {
       });
     }
 
-    const { name, isGroup, members, description } = req.body;
+    let { name, isGroup, members, description } = req.body;
+
+    console.log("Creating chat with data:", {
+      name,
+      isGroup,
+      members,
+      description,
+    });
+
+    if (!Array.isArray(members) || members.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Members array is required",
+      });
+    }
 
     if (!isGroup && members.length !== 1) {
       return res.status(400).json({
@@ -201,41 +216,77 @@ export const createChat = async (req, res) => {
       });
     }
 
+    if (isGroup && (!name || name.trim() === "")) {
+      return res.status(400).json({
+        success: false,
+        message: "Group chat must have a name",
+      });
+    }
+
     if (!isGroup) {
       const existingChat = await prisma.chat.findFirst({
         where: {
           isGroup: false,
+          AND: [
+            { members: { some: { userId: req.user.id } } },
+            { members: { some: { userId: members[0] } } },
+          ],
+        },
+        include: {
           members: {
-            every: {
-              userId: { in: [req.user.id, members[0]] },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  username: true,
+                  firstName: true,
+                  lastName: true,
+                  avatar: true,
+                  isOnline: true,
+                  lastSeen: true,
+                },
+              },
             },
           },
         },
       });
 
       if (existingChat) {
-        return res.status(400).json({
-          success: false,
-          message: "Chat with this user already exists",
+        console.log("Chat already exists, returning existing chat");
+        return res.json({
+          success: true,
+          message: "Chat retrieved successfully",
+          data: { chat: existingChat },
         });
       }
     }
 
-    const chatMembers = [
-      { userId: req.user.id, role: "ADMIN" },
-      ...members.map((memberId) => ({ userId: memberId, role: "MEMBER" })),
-    ];
+    const chatData = {
+      isGroup: Boolean(isGroup),
+      creatorId: req.user.id,
+      members: {
+        create: [
+          { userId: req.user.id, role: "ADMIN" },
+          ...members.map((memberId) => ({
+            userId: memberId,
+            role: "MEMBER",
+          })),
+        ],
+      },
+    };
+
+    if (isGroup && name) {
+      chatData.name = name.trim();
+    }
+
+    if (isGroup && description) {
+      chatData.description = description.trim();
+    }
+
+    console.log("Creating chat with Prisma data:", chatData);
 
     const chat = await prisma.chat.create({
-      data: {
-        name: isGroup ? name : null,
-        isGroup,
-        description: isGroup ? description : null,
-        creatorId: req.user.id,
-        members: {
-          create: chatMembers,
-        },
-      },
+      data: chatData,
       include: {
         members: {
           include: {
@@ -255,6 +306,8 @@ export const createChat = async (req, res) => {
       },
     });
 
+    console.log("Chat created successfully:", chat.id);
+
     res.status(201).json({
       success: true,
       message: "Chat created successfully",
@@ -265,6 +318,7 @@ export const createChat = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Internal server error",
+      error: error.message,
     });
   }
 };

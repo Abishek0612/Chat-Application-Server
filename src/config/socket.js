@@ -2,33 +2,52 @@ import jwt from "jsonwebtoken";
 import { prisma } from "./database.js";
 
 const connectedUsers = new Map();
+const userSockets = new Map();
 
 export const configureSocket = (io) => {
   io.use(async (socket, next) => {
     try {
       const token = socket.handshake.auth.token;
+      if (!token) {
+        return next(new Error("Authentication error: No token provided"));
+      }
+
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       const user = await prisma.user.findUnique({
         where: { id: decoded.userId },
-        select: { id: true, username: true, avatar: true, isOnline: true },
+        select: {
+          id: true,
+          username: true,
+          firstName: true,
+          lastName: true,
+          avatar: true,
+          isOnline: true,
+        },
       });
 
       if (!user) {
-        return next(new Error("Authentication error"));
+        return next(new Error("Authentication error: User not found"));
       }
 
       socket.userId = user.id;
       socket.user = user;
       next();
     } catch (err) {
-      next(new Error("Authentication error"));
+      console.error("Socket authentication error:", err);
+      next(new Error("Authentication error: Invalid token"));
     }
   });
 
   io.on("connection", async (socket) => {
-    console.log(`User ${socket.user.username} connected`);
+    console.log(
+      `User ${socket.user.username} connected with socket ${socket.id}`
+    );
 
-    connectedUsers.set(socket.userId, socket.id);
+    if (!userSockets.has(socket.userId)) {
+      userSockets.set(socket.userId, new Set());
+    }
+    userSockets.get(socket.userId).add(socket.id);
+    connectedUsers.set(socket.id, socket.userId);
 
     await prisma.user.update({
       where: { id: socket.userId },
@@ -38,43 +57,113 @@ export const configureSocket = (io) => {
     socket.broadcast.emit("userOnline", {
       userId: socket.userId,
       isOnline: true,
+      user: socket.user,
     });
 
-    socket.on("joinChat", (chatId) => {
-      socket.join(`chat_${chatId}`);
-    });
+    socket.join(`user_${socket.userId}`);
 
-    socket.on("leaveChat", (chatId) => {
-      socket.leave(`chat_${chatId}`);
-    });
-
-    socket.on("sendMessage", async (data) => {
+    socket.on("joinChat", async (chatId) => {
       try {
-        const message = await prisma.message.create({
-          data: {
-            content: data.content,
-            type: data.type || "TEXT",
-            senderId: socket.userId,
-            chatId: data.chatId,
-            receiverId: data.receiverId,
-          },
-          include: {
-            sender: {
-              select: { id: true, username: true, avatar: true },
-            },
-            receiver: {
-              select: { id: true, username: true },
+        const chatMember = await prisma.chatMember.findUnique({
+          where: {
+            userId_chatId: {
+              userId: socket.userId,
+              chatId: chatId,
             },
           },
         });
 
-        socket.to(`chat_${data.chatId}`).emit("newMessage", message);
-
-        if (data.receiverId && connectedUsers.has(data.receiverId)) {
-          const receiverSocketId = connectedUsers.get(data.receiverId);
-          io.to(receiverSocketId).emit("newMessage", message);
+        if (chatMember) {
+          socket.join(`chat_${chatId}`);
+          console.log(`User ${socket.userId} joined chat ${chatId}`);
         }
       } catch (error) {
+        console.error("Error joining chat:", error);
+      }
+    });
+
+    socket.on("leaveChat", (chatId) => {
+      socket.leave(`chat_${chatId}`);
+      console.log(`User ${socket.userId} left chat ${chatId}`);
+    });
+
+    socket.on("sendMessage", async (data) => {
+      try {
+        if (!data.content || !data.chatId) {
+          socket.emit("error", { message: "Invalid message data" });
+          return;
+        }
+
+        const chatMember = await prisma.chatMember.findUnique({
+          where: {
+            userId_chatId: {
+              userId: socket.userId,
+              chatId: data.chatId,
+            },
+          },
+        });
+
+        if (!chatMember) {
+          socket.emit("error", { message: "Access denied to this chat" });
+          return;
+        }
+
+        const message = await prisma.message.create({
+          data: {
+            content: data.content.trim(),
+            type: data.type || "TEXT",
+            senderId: socket.userId,
+            chatId: data.chatId,
+            receiverId: data.receiverId,
+            fileUrl: data.fileUrl,
+            fileName: data.fileName,
+            fileSize: data.fileSize,
+          },
+          include: {
+            sender: {
+              select: {
+                id: true,
+                username: true,
+                firstName: true,
+                lastName: true,
+                avatar: true,
+              },
+            },
+            receiver: {
+              select: {
+                id: true,
+                username: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        });
+
+        await prisma.chat.update({
+          where: { id: data.chatId },
+          data: { updatedAt: new Date() },
+        });
+
+        io.to(`chat_${data.chatId}`).emit("newMessage", message);
+
+        const chatMembers = await prisma.chatMember.findMany({
+          where: { chatId: data.chatId },
+          include: { user: true },
+        });
+
+        chatMembers.forEach((member) => {
+          if (member.userId !== socket.userId) {
+            const memberSockets = userSockets.get(member.userId);
+            if (!memberSockets || memberSockets.size === 0) {
+              console.log(
+                `User ${member.userId} is offline, should send push notification`
+              );
+            }
+          }
+        });
+      } catch (error) {
+        console.error("Send message error:", error);
         socket.emit("error", { message: "Failed to send message" });
       }
     });
@@ -83,35 +172,76 @@ export const configureSocket = (io) => {
       socket.to(`chat_${data.chatId}`).emit("userTyping", {
         userId: socket.userId,
         username: socket.user.username,
+        firstName: socket.user.firstName,
+        chatId: data.chatId,
       });
     });
 
     socket.on("stopTyping", (data) => {
       socket.to(`chat_${data.chatId}`).emit("userStoppedTyping", {
         userId: socket.userId,
+        chatId: data.chatId,
       });
     });
 
+    socket.on("markMessageRead", async (data) => {
+      try {
+        await prisma.message.update({
+          where: { id: data.messageId },
+          data: { isRead: true },
+        });
+
+        socket.to(`chat_${data.chatId}`).emit("messageRead", {
+          messageId: data.messageId,
+          userId: socket.userId,
+        });
+      } catch (error) {
+        console.error("Mark message read error:", error);
+      }
+    });
+
     socket.on("disconnect", async () => {
-      console.log(`User ${socket.user.username} disconnected`);
+      console.log(
+        `User ${socket.user.username} disconnected from socket ${socket.id}`
+      );
 
-      connectedUsers.delete(socket.userId);
+      const userSocketSet = userSockets.get(socket.userId);
+      if (userSocketSet) {
+        userSocketSet.delete(socket.id);
 
-      await prisma.user.update({
-        where: { id: socket.userId },
-        data: {
-          isOnline: false,
-          lastSeen: new Date(),
-        },
-      });
+        if (userSocketSet.size === 0) {
+          userSockets.delete(socket.userId);
 
-      socket.broadcast.emit("userOffline", {
-        userId: socket.userId,
-        isOnline: false,
-        lastSeen: new Date(),
-      });
+          await prisma.user.update({
+            where: { id: socket.userId },
+            data: {
+              isOnline: false,
+              lastSeen: new Date(),
+            },
+          });
+
+          socket.broadcast.emit("userOffline", {
+            userId: socket.userId,
+            isOnline: false,
+            lastSeen: new Date(),
+          });
+        }
+      }
+
+      connectedUsers.delete(socket.id);
+    });
+
+    socket.on("error", (error) => {
+      console.error(`Socket error for user ${socket.userId}:`, error);
+    });
+  });
+
+  process.on("SIGTERM", () => {
+    console.log("SIGTERM received, closing server gracefully");
+    io.close(() => {
+      console.log("Socket.IO server closed");
     });
   });
 };
 
-export { connectedUsers };
+export { connectedUsers, userSockets };

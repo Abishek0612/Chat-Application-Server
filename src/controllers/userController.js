@@ -32,7 +32,11 @@ export const getUsers = async (req, res) => {
         },
         skip,
         take: parseInt(limit),
-        orderBy: { createdAt: "desc" },
+        orderBy: [
+          { isOnline: "desc" },
+          { lastSeen: "desc" },
+          { createdAt: "desc" },
+        ],
       }),
       prisma.user.count({ where }),
     ]);
@@ -117,6 +121,7 @@ export const updateProfile = async (req, res) => {
         lastName,
         bio,
         phone,
+        updatedAt: new Date(),
       },
       select: {
         id: true,
@@ -160,7 +165,10 @@ export const uploadAvatar = async (req, res) => {
 
     const user = await prisma.user.update({
       where: { id: req.user.id },
-      data: { avatar: avatarUrl },
+      data: {
+        avatar: avatarUrl,
+        updatedAt: new Date(),
+      },
       select: {
         id: true,
         email: true,
@@ -217,21 +225,25 @@ export const searchUsers = async (req, res) => {
               {
                 username: {
                   contains: searchTerm,
+                  mode: "insensitive",
                 },
               },
               {
                 email: {
                   contains: searchTerm,
+                  mode: "insensitive",
                 },
               },
               {
                 firstName: {
                   contains: searchTerm,
+                  mode: "insensitive",
                 },
               },
               {
                 lastName: {
                   contains: searchTerm,
+                  mode: "insensitive",
                 },
               },
             ],
@@ -250,6 +262,7 @@ export const searchUsers = async (req, res) => {
         lastSeen: true,
       },
       take: 20,
+      orderBy: [{ isOnline: "desc" }, { lastSeen: "desc" }],
     });
 
     res.json({
@@ -264,6 +277,7 @@ export const searchUsers = async (req, res) => {
     });
   }
 };
+
 export const getUserContacts = async (req, res) => {
   try {
     const contacts = await prisma.user.findMany({
@@ -289,6 +303,7 @@ export const getUserContacts = async (req, res) => {
         lastSeen: true,
       },
       distinct: ["id"],
+      orderBy: [{ isOnline: "desc" }, { lastSeen: "desc" }],
     });
 
     res.json({
@@ -329,11 +344,10 @@ export const addContact = async (req, res) => {
     let chat = await prisma.chat.findFirst({
       where: {
         isGroup: false,
-        members: {
-          every: {
-            userId: { in: [req.user.id, userId] },
-          },
-        },
+        AND: [
+          { members: { some: { userId: req.user.id } } },
+          { members: { some: { userId: userId } } },
+        ],
       },
     });
 
@@ -390,11 +404,10 @@ export const removeContact = async (req, res) => {
     const chat = await prisma.chat.findFirst({
       where: {
         isGroup: false,
-        members: {
-          every: {
-            userId: { in: [req.user.id, userId] },
-          },
-        },
+        AND: [
+          { members: { some: { userId: req.user.id } } },
+          { members: { some: { userId: userId } } },
+        ],
       },
     });
 

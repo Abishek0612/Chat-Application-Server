@@ -17,9 +17,12 @@ export const register = async (req, res) => {
 
     const { email, username, firstName, lastName, password } = req.body;
 
+    const normalizedEmail = email.toLowerCase();
+    const normalizedUsername = username.toLowerCase();
+
     const existingUser = await prisma.user.findFirst({
       where: {
-        OR: [{ email }, { username }],
+        OR: [{ email: normalizedEmail }, { username: normalizedUsername }],
       },
     });
 
@@ -34,8 +37,8 @@ export const register = async (req, res) => {
 
     const user = await prisma.user.create({
       data: {
-        email,
-        username,
+        email: normalizedEmail,
+        username: normalizedUsername,
         firstName,
         lastName,
         password: hashedPassword,
@@ -80,9 +83,11 @@ export const login = async (req, res) => {
 
     const { emailOrUsername, password } = req.body;
 
+    const normalizedInput = emailOrUsername.toLowerCase();
+
     const user = await prisma.user.findFirst({
       where: {
-        OR: [{ email: emailOrUsername }, { username: emailOrUsername }],
+        OR: [{ email: normalizedInput }, { username: normalizedInput }],
       },
     });
 
@@ -95,7 +100,10 @@ export const login = async (req, res) => {
 
     await prisma.user.update({
       where: { id: user.id },
-      data: { isOnline: true },
+      data: {
+        isOnline: true,
+        lastSeen: new Date(),
+      },
     });
 
     const token = generateToken(user.id);

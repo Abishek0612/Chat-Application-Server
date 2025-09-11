@@ -16,10 +16,26 @@ import { upload } from "../middleware/upload.js";
 const router = express.Router();
 
 const createChatValidation = [
-  body("name").optional().isLength({ min: 1, max: 100 }).trim(),
-  body("isGroup").isBoolean(),
-  body("members").isArray({ min: 1 }),
-  body("description").optional().isLength({ max: 500 }).trim(),
+  body("name")
+    .optional({ nullable: true })
+    .custom((value, { req }) => {
+      if (req.body.isGroup && (!value || value.trim() === "")) {
+        throw new Error("Group chat must have a name");
+      }
+      if (value && value.length > 100) {
+        throw new Error("Name must be less than 100 characters");
+      }
+      return true;
+    }),
+  body("isGroup").isBoolean().withMessage("isGroup must be a boolean"),
+  body("members")
+    .isArray({ min: 1 })
+    .withMessage("Members array is required with at least one member"),
+  body("members.*").isString().withMessage("All member IDs must be strings"),
+  body("description")
+    .optional({ nullable: true })
+    .isLength({ max: 500 })
+    .withMessage("Description must be less than 500 characters"),
 ];
 
 const updateChatValidation = [

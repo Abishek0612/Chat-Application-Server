@@ -3,20 +3,23 @@ import { prisma } from "../config/database.js";
 export class UserModel {
   static async findByEmail(email) {
     return prisma.user.findUnique({
-      where: { email },
+      where: { email: email.toLowerCase() },
     });
   }
 
   static async findByUsername(username) {
     return prisma.user.findUnique({
-      where: { username },
+      where: { username: username.toLowerCase() },
     });
   }
 
   static async findByEmailOrUsername(emailOrUsername) {
     return prisma.user.findFirst({
       where: {
-        OR: [{ email: emailOrUsername }, { username: emailOrUsername }],
+        OR: [
+          { email: emailOrUsername.toLowerCase() },
+          { username: emailOrUsername.toLowerCase() },
+        ],
       },
     });
   }
@@ -43,7 +46,11 @@ export class UserModel {
 
   static async create(userData) {
     return prisma.user.create({
-      data: userData,
+      data: {
+        ...userData,
+        email: userData.email.toLowerCase(),
+        username: userData.username.toLowerCase(),
+      },
       select: {
         id: true,
         email: true,
@@ -59,7 +66,10 @@ export class UserModel {
   static async updateById(id, updateData) {
     return prisma.user.update({
       where: { id },
-      data: updateData,
+      data: {
+        ...updateData,
+        updatedAt: new Date(),
+      },
       select: {
         id: true,
         email: true,
@@ -80,7 +90,11 @@ export class UserModel {
   static async updateOnlineStatus(id, isOnline, lastSeen = new Date()) {
     return prisma.user.update({
       where: { id },
-      data: { isOnline, lastSeen },
+      data: {
+        isOnline,
+        lastSeen,
+        updatedAt: new Date(),
+      },
     });
   }
 
@@ -105,6 +119,11 @@ export class UserModel {
         lastSeen: true,
       },
       take: limit,
+      orderBy: [
+        { isOnline: "desc" },
+        { lastSeen: "desc" },
+        { createdAt: "desc" },
+      ],
     });
   }
 }
@@ -128,6 +147,7 @@ export class ChatModel {
               },
             },
           },
+          orderBy: { joinedAt: "asc" },
         },
         creator: {
           select: {
@@ -165,6 +185,7 @@ export class ChatModel {
               },
             },
           },
+          orderBy: { joinedAt: "asc" },
         },
         messages: {
           take: 1,
@@ -200,11 +221,10 @@ export class ChatModel {
     return prisma.chat.findFirst({
       where: {
         isGroup: false,
-        members: {
-          every: {
-            userId: { in: [userId1, userId2] },
-          },
-        },
+        AND: [
+          { members: { some: { userId: userId1 } } },
+          { members: { some: { userId: userId2 } } },
+        ],
       },
       include: {
         members: {
@@ -252,7 +272,10 @@ export class ChatModel {
   static async updateById(chatId, updateData) {
     return prisma.chat.update({
       where: { id: chatId },
-      data: updateData,
+      data: {
+        ...updateData,
+        updatedAt: new Date(),
+      },
       include: {
         members: {
           include: {
@@ -385,7 +408,10 @@ export class MessageModel {
   static async markAsRead(messageId) {
     return prisma.message.update({
       where: { id: messageId },
-      data: { isRead: true },
+      data: {
+        isRead: true,
+        updatedAt: new Date(),
+      },
     });
   }
 
@@ -396,7 +422,10 @@ export class MessageModel {
         receiverId: userId,
         isRead: false,
       },
-      data: { isRead: true },
+      data: {
+        isRead: true,
+        updatedAt: new Date(),
+      },
     });
   }
 
@@ -407,6 +436,30 @@ export class MessageModel {
         receiverId: userId,
         isRead: false,
       },
+    });
+  }
+
+  static async searchInChat(chatId, query, limit = 20) {
+    return prisma.message.findMany({
+      where: {
+        chatId,
+        content: {
+          contains: query,
+          mode: "insensitive",
+        },
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            username: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
+      take: limit,
+      orderBy: { createdAt: "desc" },
     });
   }
 }
@@ -456,6 +509,7 @@ export class ChatMemberModel {
           },
         },
       },
+      orderBy: [{ role: "asc" }, { joinedAt: "asc" }],
     });
   }
 
@@ -468,6 +522,30 @@ export class ChatMemberModel {
         },
       },
       data: { role },
+    });
+  }
+
+  static async findByUser(userId) {
+    return prisma.chatMember.findMany({
+      where: { userId },
+      include: {
+        chat: {
+          select: {
+            id: true,
+            name: true,
+            isGroup: true,
+            avatar: true,
+            updatedAt: true,
+          },
+        },
+      },
+      orderBy: { joinedAt: "desc" },
+    });
+  }
+
+  static async getMemberCount(chatId) {
+    return prisma.chatMember.count({
+      where: { chatId },
     });
   }
 }

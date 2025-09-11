@@ -22,7 +22,7 @@ model User {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  googleId    String?
+  googleId    String?  @unique  
   provider    String   @default("local")
 
   sentMessages     Message[] @relation("MessageSender")
@@ -56,7 +56,7 @@ model ChatMember {
   id        String   @id @default(cuid())
   userId    String
   chatId    String
-  role      String   @default("MEMBER") // Changed from enum to String
+  role      String   @default("MEMBER")
   joinedAt  DateTime @default(now())
 
   user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -69,7 +69,7 @@ model ChatMember {
 model Message {
   id        String   @id @default(cuid())
   content   String
-  type      String   @default("TEXT") // Changed from enum to String
+  type      String   @default("TEXT")
   fileUrl   String?
   fileName  String?
   fileSize  Int?

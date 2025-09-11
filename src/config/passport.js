@@ -14,7 +14,7 @@ export const configurePassport = () => {
         },
         async (accessToken, refreshToken, profile, done) => {
           try {
-            let user = await prisma.user.findUnique({
+            let user = await prisma.user.findFirst({
               where: { googleId: profile.id },
             });
 
@@ -33,7 +33,8 @@ export const configurePassport = () => {
                   data: {
                     googleId: profile.id,
                     email: profile.emails[0].value,
-                    username: profile.emails[0].value.split("@")[0],
+                    username:
+                      profile.emails[0].value.split("@")[0] + "_" + Date.now(),
                     firstName: profile.name.givenName,
                     lastName: profile.name.familyName,
                     avatar: profile.photos[0].value,
@@ -45,6 +46,7 @@ export const configurePassport = () => {
 
             return done(null, user);
           } catch (error) {
+            console.error("Google OAuth error:", error);
             return done(error, null);
           }
         }

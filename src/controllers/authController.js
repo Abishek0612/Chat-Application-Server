@@ -120,10 +120,12 @@ export const googleCallback = async (req, res) => {
   try {
     const token = generateToken(req.user.id);
 
-    res.redirect(`${process.env.CLIENT_URL}/auth/success?token=${token}`);
+    res.redirect(`${process.env.CLIENT_URL}/auth/google?token=${token}`);
   } catch (error) {
     console.error("Google callback error:", error);
-    res.redirect(`${process.env.CLIENT_URL}/auth/error`);
+    res.redirect(
+      `${process.env.CLIENT_URL}/auth/google?error=authentication_failed`
+    );
   }
 };
 

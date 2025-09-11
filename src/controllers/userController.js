@@ -192,49 +192,78 @@ export const uploadAvatar = async (req, res) => {
 
 export const searchUsers = async (req, res) => {
   try {
-    const { q, limit = 10 } = req.query;
+    const { q } = req.query;
+    const currentUserId = req.user.id;
 
-    if (!q || q.length < 2) {
-      return res.json({
-        success: true,
-        data: { users: [] },
+    if (!q || q.trim().length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: "Search query must be at least 2 characters long",
       });
     }
 
+    const searchTerm = q.trim();
+
     const users = await prisma.user.findMany({
       where: {
-        OR: [
-          { username: { contains: q, mode: "insensitive" } },
-          { firstName: { contains: q, mode: "insensitive" } },
-          { lastName: { contains: q, mode: "insensitive" } },
-          { email: { contains: q, mode: "insensitive" } },
+        AND: [
+          {
+            id: {
+              not: currentUserId,
+            },
+          },
+          {
+            OR: [
+              {
+                username: {
+                  contains: searchTerm,
+                },
+              },
+              {
+                email: {
+                  contains: searchTerm,
+                },
+              },
+              {
+                firstName: {
+                  contains: searchTerm,
+                },
+              },
+              {
+                lastName: {
+                  contains: searchTerm,
+                },
+              },
+            ],
+          },
         ],
-        NOT: { id: req.user.id },
       },
       select: {
         id: true,
         username: true,
+        email: true,
         firstName: true,
         lastName: true,
         avatar: true,
+        bio: true,
         isOnline: true,
+        lastSeen: true,
       },
-      take: parseInt(limit),
+      take: 20,
     });
 
     res.json({
       success: true,
-      data: { users },
+      users: users,
     });
   } catch (error) {
-    console.error("Search users error:", error);
+    console.error("User search error:", error);
     res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "Failed to search users",
     });
   }
 };
-
 export const getUserContacts = async (req, res) => {
   try {
     const contacts = await prisma.user.findMany({

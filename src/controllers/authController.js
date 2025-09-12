@@ -128,12 +128,118 @@ export const googleCallback = async (req, res) => {
   try {
     const token = generateToken(req.user.id);
 
-    res.redirect(`${process.env.CLIENT_URL}/auth/google?token=${token}`);
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Authentication Successful</title>
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              height: 100vh;
+              margin: 0;
+              background: #f8f9fa;
+            }
+            .container {
+              text-align: center;
+              padding: 2rem;
+              background: white;
+              border-radius: 8px;
+              box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            }
+            .success {
+              color: #28a745;
+              font-size: 1.2rem;
+              margin-bottom: 1rem;
+            }
+            .loading {
+              color: #6c757d;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="success">✓ Authentication Successful</div>
+            <div class="loading">Closing window...</div>
+          </div>
+          <script>
+            try {
+              if (window.opener) {
+                window.opener.postMessage({
+                  type: 'GOOGLE_AUTH_SUCCESS',
+                  token: '${token}'
+                }, '${process.env.CLIENT_URL}');
+              }
+              // Close the popup
+              setTimeout(() => {
+                window.close();
+              }, 1000);
+            } catch (error) {
+              console.error('Error closing popup:', error);
+              window.close();
+            }
+          </script>
+        </body>
+      </html>
+    `);
   } catch (error) {
     console.error("Google callback error:", error);
-    res.redirect(
-      `${process.env.CLIENT_URL}/auth/google?error=authentication_failed`
-    );
+
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Authentication Failed</title>
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              height: 100vh;
+              margin: 0;
+              background: #f8f9fa;
+            }
+            .container {
+              text-align: center;
+              padding: 2rem;
+              background: white;
+              border-radius: 8px;
+              box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            }
+            .error {
+              color: #dc3545;
+              font-size: 1.2rem;
+              margin-bottom: 1rem;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="error">✗ Authentication Failed</div>
+            <div>Please try again</div>
+          </div>
+          <script>
+            try {
+              if (window.opener) {
+                window.opener.postMessage({
+                  type: 'GOOGLE_AUTH_ERROR',
+                  error: 'authentication_failed'
+                }, '${process.env.CLIENT_URL}');
+              }
+              setTimeout(() => {
+                window.close();
+              }, 2000);
+            } catch (error) {
+              window.close();
+            }
+          </script>
+        </body>
+      </html>
+    `);
   }
 };
 

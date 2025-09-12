@@ -1,3 +1,8 @@
+import dotenv from "dotenv";
+if (process.env.NODE_ENV !== "production") {
+  dotenv.config({ path: `.env.development` });
+}
+
 import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
@@ -8,7 +13,6 @@ import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 import session from "express-session";
 import passport from "passport";
-import dotenv from "dotenv";
 
 import { connectDB } from "./config/database.js";
 import { configureCloudinary } from "./config/cloudinary.js";
@@ -20,8 +24,6 @@ import authRoutes from "./routes/auth.js";
 import userRoutes from "./routes/users.js";
 import chatRoutes from "./routes/chats.js";
 import messageRoutes from "./routes/messages.js";
-
-dotenv.config();
 
 const app = express();
 const server = createServer(app);
@@ -37,7 +39,7 @@ const corsOptions = {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(null, true);
+      callback(new Error("Not allowed by CORS"));
     }
   },
   credentials: true,

@@ -9,6 +9,10 @@ import {
   getUserContacts,
   addContact,
   removeContact,
+  sendFriendRequest,
+  getFriendRequests,
+  acceptFriendRequest,
+  rejectFriendRequest,
 } from "../controllers/userController.js";
 import { authenticate } from "../middleware/auth.js";
 import { upload } from "../middleware/upload.js";
@@ -34,5 +38,10 @@ router.post("/avatar", upload.single("avatar"), uploadAvatar);
 
 router.post("/contacts/:userId", addContact);
 router.delete("/contacts/:userId", removeContact);
+
+router.post("/friend-request/:userId", sendFriendRequest);
+router.get("/friend-requests", getFriendRequests);
+router.post("/friend-request/:requestId/accept", acceptFriendRequest);
+router.post("/friend-request/:requestId/reject", rejectFriendRequest);
 
 export default router;

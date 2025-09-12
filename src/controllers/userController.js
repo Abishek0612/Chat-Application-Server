@@ -429,3 +429,323 @@ export const removeContact = async (req, res) => {
     });
   }
 };
+
+export const sendFriendRequest = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const senderId = req.user.id;
+
+    if (userId === senderId) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot send friend request to yourself",
+      });
+    }
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!targetUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const existingRequest = await prisma.friendRequest.findUnique({
+      where: {
+        senderId_receiverId: {
+          senderId,
+          receiverId: userId,
+        },
+      },
+    });
+
+    if (existingRequest) {
+      return res.status(400).json({
+        success: false,
+        message: "Friend request already sent",
+      });
+    }
+
+    const reverseRequest = await prisma.friendRequest.findUnique({
+      where: {
+        senderId_receiverId: {
+          senderId: userId,
+          receiverId: senderId,
+        },
+      },
+    });
+
+    if (reverseRequest) {
+      return res.status(400).json({
+        success: false,
+        message: "This user has already sent you a friend request",
+      });
+    }
+
+    const friendRequest = await prisma.friendRequest.create({
+      data: {
+        senderId,
+        receiverId: userId,
+        status: "PENDING",
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            username: true,
+            firstName: true,
+            lastName: true,
+            avatar: true,
+          },
+        },
+        receiver: {
+          select: {
+            id: true,
+            username: true,
+            firstName: true,
+            lastName: true,
+            avatar: true,
+          },
+        },
+      },
+    });
+
+    if (global.io) {
+      global.io.to(`user_${userId}`).emit("friendRequest", {
+        friendRequest,
+        sender: friendRequest.sender,
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "Friend request sent successfully",
+      data: { friendRequest },
+    });
+  } catch (error) {
+    console.error("Send friend request error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getFriendRequests = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { type = "received" } = req.query;
+
+    let friendRequests;
+
+    if (type === "sent") {
+      friendRequests = await prisma.friendRequest.findMany({
+        where: {
+          senderId: userId,
+          status: "PENDING",
+        },
+        include: {
+          receiver: {
+            select: {
+              id: true,
+              username: true,
+              firstName: true,
+              lastName: true,
+              avatar: true,
+              isOnline: true,
+              lastSeen: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+    } else {
+      friendRequests = await prisma.friendRequest.findMany({
+        where: {
+          receiverId: userId,
+          status: "PENDING",
+        },
+        include: {
+          sender: {
+            select: {
+              id: true,
+              username: true,
+              firstName: true,
+              lastName: true,
+              avatar: true,
+              isOnline: true,
+              lastSeen: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+    }
+
+    res.json({
+      success: true,
+      data: { friendRequests },
+    });
+  } catch (error) {
+    console.error("Get friend requests error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const acceptFriendRequest = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const userId = req.user.id;
+
+    const friendRequest = await prisma.friendRequest.findUnique({
+      where: { id: requestId },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            username: true,
+            firstName: true,
+            lastName: true,
+            avatar: true,
+          },
+        },
+      },
+    });
+
+    if (!friendRequest) {
+      return res.status(404).json({
+        success: false,
+        message: "Friend request not found",
+      });
+    }
+
+    if (friendRequest.receiverId !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied",
+      });
+    }
+
+    if (friendRequest.status !== "PENDING") {
+      return res.status(400).json({
+        success: false,
+        message: "Friend request already processed",
+      });
+    }
+
+    await prisma.friendRequest.update({
+      where: { id: requestId },
+      data: { status: "ACCEPTED" },
+    });
+
+    const existingChat = await prisma.chat.findFirst({
+      where: {
+        isGroup: false,
+        AND: [
+          { members: { some: { userId: friendRequest.senderId } } },
+          { members: { some: { userId: userId } } },
+        ],
+      },
+    });
+
+    let chat = existingChat;
+
+    if (!existingChat) {
+      chat = await prisma.chat.create({
+        data: {
+          isGroup: false,
+          creatorId: userId,
+          members: {
+            create: [
+              { userId: userId, role: "MEMBER" },
+              { userId: friendRequest.senderId, role: "MEMBER" },
+            ],
+          },
+        },
+        include: {
+          members: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  username: true,
+                  firstName: true,
+                  lastName: true,
+                  avatar: true,
+                  isOnline: true,
+                  lastSeen: true,
+                },
+              },
+            },
+          },
+        },
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Friend request accepted",
+      data: { chat },
+    });
+  } catch (error) {
+    console.error("Accept friend request error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+export const rejectFriendRequest = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const userId = req.user.id;
+
+    const friendRequest = await prisma.friendRequest.findUnique({
+      where: { id: requestId },
+    });
+
+    if (!friendRequest) {
+      return res.status(404).json({
+        success: false,
+        message: "Friend request not found",
+      });
+    }
+
+    if (friendRequest.receiverId !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied",
+      });
+    }
+
+    if (friendRequest.status !== "PENDING") {
+      return res.status(400).json({
+        success: false,
+        message: "Friend request already processed",
+      });
+    }
+
+    await prisma.friendRequest.update({
+      where: { id: requestId },
+      data: { status: "REJECTED" },
+    });
+
+    res.json({
+      success: true,
+      message: "Friend request rejected",
+    });
+  } catch (error) {
+    console.error("Reject friend request error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};

@@ -94,59 +94,6 @@ export const configureSocket = (io) => {
           return;
         }
 
-        const chatMember = await prisma.chatMember.findUnique({
-          where: {
-            userId_chatId: {
-              userId: socket.userId,
-              chatId: data.chatId,
-            },
-          },
-        });
-
-        if (!chatMember) {
-          socket.emit("error", { message: "Access denied to this chat" });
-          return;
-        }
-
-        const message = await prisma.message.create({
-          data: {
-            content: data.content.trim(),
-            type: data.type || "TEXT",
-            senderId: socket.userId,
-            chatId: data.chatId,
-            receiverId: data.receiverId,
-            fileUrl: data.fileUrl,
-            fileName: data.fileName,
-            fileSize: data.fileSize,
-          },
-          include: {
-            sender: {
-              select: {
-                id: true,
-                username: true,
-                firstName: true,
-                lastName: true,
-                avatar: true,
-              },
-            },
-            receiver: {
-              select: {
-                id: true,
-                username: true,
-                firstName: true,
-                lastName: true,
-              },
-            },
-          },
-        });
-
-        await prisma.chat.update({
-          where: { id: data.chatId },
-          data: { updatedAt: new Date() },
-        });
-
-        io.to(`chat_${data.chatId}`).emit("newMessage", message);
-
         const chatMembers = await prisma.chatMember.findMany({
           where: { chatId: data.chatId },
           include: { user: true },
@@ -159,6 +106,12 @@ export const configureSocket = (io) => {
               console.log(
                 `User ${member.userId} is offline, should send push notification`
               );
+            } else {
+              io.to(`user_${member.userId}`).emit("newMessageNotification", {
+                chatId: data.chatId,
+                message,
+                sender: socket.user,
+              });
             }
           }
         });

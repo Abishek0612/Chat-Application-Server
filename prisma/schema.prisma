@@ -31,8 +31,27 @@ model User {
   chatMembers ChatMember[]
   createdChats Chat[] @relation("ChatCreator")
 
+  sentFriendRequests     FriendRequest[] @relation("FriendRequestSender")
+  receivedFriendRequests FriendRequest[] @relation("FriendRequestReceiver")
+
   @@map("users")
 }
+
+model FriendRequest {
+  id         String   @id @default(cuid())
+  senderId   String
+  receiverId String
+  status     String   @default("PENDING") 
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  sender     User @relation("FriendRequestSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver   User @relation("FriendRequestReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, receiverId])
+  @@map("friend_requests")
+}
+
 
 model Chat {
   id          String   @id @default(cuid())

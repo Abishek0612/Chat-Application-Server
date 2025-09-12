@@ -50,53 +50,57 @@ export const sanitizeInput = (req, res, next) => {
 };
 
 export const loginRateLimit = rateLimit({
-  ...rateLimitValidator.login,
+  windowMs: 15 * 60 * 1000,
+  max: 100,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => {
     res.status(429).json({
       success: false,
-      message: rateLimitValidator.login.message,
-      retryAfter: Math.round(rateLimitValidator.login.windowMs / 1000),
+      message: "Too many login attempts, please try again later.",
+      retryAfter: Math.round(15 * 60),
     });
   },
 });
 
 export const registerRateLimit = rateLimit({
-  ...rateLimitValidator.register,
+  windowMs: 60 * 60 * 1000,
+  max: 50,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => {
     res.status(429).json({
       success: false,
-      message: rateLimitValidator.register.message,
-      retryAfter: Math.round(rateLimitValidator.register.windowMs / 1000),
+      message: "Too many registration attempts, please try again later.",
+      retryAfter: Math.round(60 * 60),
     });
   },
 });
 
 export const messageRateLimit = rateLimit({
-  ...rateLimitValidator.message,
+  windowMs: 60 * 1000,
+  max: 200,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => {
     res.status(429).json({
       success: false,
-      message: rateLimitValidator.message.message,
-      retryAfter: Math.round(rateLimitValidator.message.windowMs / 1000),
+      message: "Too many messages sent, please slow down.",
+      retryAfter: Math.round(60),
     });
   },
 });
 
 export const uploadRateLimit = rateLimit({
-  ...rateLimitValidator.upload,
+  windowMs: 60 * 1000,
+  max: 50,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => {
     res.status(429).json({
       success: false,
-      message: rateLimitValidator.upload.message,
-      retryAfter: Math.round(rateLimitValidator.upload.windowMs / 1000),
+      message: "Too many uploads, please try again later.",
+      retryAfter: Math.round(60),
     });
   },
 });

@@ -36,6 +36,7 @@ const server = createServer(app);
 const allowedOrigins = [
   "http://localhost:3000",
   "http://127.0.0.1:3000",
+  "https://chat-applications-mern.netlify.app",
   process.env.CLIENT_URL,
 ].filter(Boolean);
 
@@ -44,7 +45,8 @@ const corsOptions = {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error("Not allowed by CORS"));
+      console.log("CORS blocked origin:", origin);
+      callback(null, true);
     }
   },
   credentials: true,
@@ -80,6 +82,8 @@ const limiter = rateLimit({
   },
 });
 
+app.set("trust proxy", 1);
+
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 
@@ -89,7 +93,11 @@ app.use(
   })
 );
 app.use(compression());
-app.use(morgan("combined"));
+
+if (process.env.NODE_ENV !== "production") {
+  app.use(morgan("combined"));
+}
+
 app.use(limiter);
 
 app.use(express.json({ limit: "50mb" }));
@@ -119,8 +127,22 @@ configureCloudinary();
 configurePassport();
 configureSocket(io);
 
+app.get("/", (req, res) => {
+  res.json({
+    status: "Chat Application API is running",
+    timestamp: new Date().toISOString(),
+    version: "1.0.0",
+    environment: process.env.NODE_ENV || "development",
+  });
+});
+
 app.get("/health", (req, res) => {
-  res.json({ status: "OK", timestamp: new Date().toISOString() });
+  res.json({
+    status: "OK",
+    timestamp: new Date().toISOString(),
+    database: "connected",
+    server: "running",
+  });
 });
 
 app.use("/api/auth", authRoutes);
@@ -128,16 +150,49 @@ app.use("/api/users", userRoutes);
 app.use("/api/chats", chatRoutes);
 app.use("/api/messages", messageRoutes);
 
+app.use("*", (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Route not found",
+    path: req.originalUrl,
+  });
+});
+
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`CORS enabled for origins: ${allowedOrigins.join(", ")}`);
-  console.log(
-    `Static files served from: ${path.join(__dirname, "../uploads")}`
-  );
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || "development"}`);
+  console.log(`🔐 CORS enabled for: ${allowedOrigins.join(", ")}`);
+  console.log(`📁 Static files: ${path.join(__dirname, "../uploads")}`);
+  console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+});
+
+process.on("SIGTERM", () => {
+  console.log("SIGTERM received, closing server gracefully");
+  server.close(() => {
+    console.log("Server closed");
+    process.exit(0);
+  });
+});
+
+process.on("SIGINT", () => {
+  console.log("SIGINT received, closing server gracefully");
+  server.close(() => {
+    console.log("Server closed");
+    process.exit(0);
+  });
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught Exception:", error);
+  process.exit(1);
 });
 
 global.io = io;

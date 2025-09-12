@@ -89,18 +89,44 @@ export const configureSocket = (io) => {
 
     socket.on("sendMessage", async (data) => {
       try {
-        if (!data.content || !data.chatId) {
-          socket.emit("error", { message: "Invalid message data" });
+        console.log("Received message data:", data);
+
+        if (!data.chatId) {
+          socket.emit("error", { message: "Chat ID is required" });
+          return;
+        }
+
+        if (!data.content && !data.fileUrl) {
+          socket.emit("error", {
+            message: "Message content or file is required",
+          });
+          return;
+        }
+
+        const chatMember = await prisma.chatMember.findUnique({
+          where: {
+            userId_chatId: {
+              userId: socket.userId,
+              chatId: data.chatId,
+            },
+          },
+        });
+
+        if (!chatMember) {
+          socket.emit("error", { message: "Access denied to this chat" });
           return;
         }
 
         const message = await prisma.message.create({
           data: {
-            content: data.content,
+            content: data.content || "",
             type: data.type || "TEXT",
             senderId: socket.userId,
             chatId: data.chatId,
             receiverId: data.receiverId,
+            fileUrl: data.fileUrl,
+            fileName: data.fileName,
+            fileSize: data.fileSize,
           },
           include: {
             sender: {
@@ -114,6 +140,13 @@ export const configureSocket = (io) => {
             },
           },
         });
+
+        await prisma.chat.update({
+          where: { id: data.chatId },
+          data: { updatedAt: new Date() },
+        });
+
+        console.log("Message created:", message);
 
         io.to(`chat_${data.chatId}`).emit("newMessage", message);
 

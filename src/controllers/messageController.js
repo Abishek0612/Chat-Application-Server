@@ -101,6 +101,20 @@ export const sendMessage = async (req, res) => {
       fileSize,
     } = req.body;
 
+    if (!chatId) {
+      return res.status(400).json({
+        success: false,
+        message: "Chat ID is required",
+      });
+    }
+
+    if (!content && !fileUrl) {
+      return res.status(400).json({
+        success: false,
+        message: "Message content or file is required",
+      });
+    }
+
     const chat = await prisma.chat.findUnique({
       where: { id: chatId },
       include: { members: true },
@@ -125,7 +139,7 @@ export const sendMessage = async (req, res) => {
 
     const message = await prisma.message.create({
       data: {
-        content,
+        content: content || "",
         type,
         senderId: req.user.id,
         chatId,
@@ -281,9 +295,19 @@ export const uploadFile = async (req, res) => {
     const folder = req.file.mimetype.startsWith("image/")
       ? "images"
       : "chat-files";
-    const fileUrl = await uploadToCloudinary(req.file.buffer, folder);
 
-    console.log("File uploaded to:", fileUrl);
+    let fileUrl;
+
+    try {
+      fileUrl = await uploadToCloudinary(req.file.buffer, folder);
+      console.log("File uploaded to Cloudinary:", fileUrl);
+    } catch (cloudinaryError) {
+      console.error("Cloudinary upload failed:", cloudinaryError);
+      return res.status(500).json({
+        success: false,
+        message: "File upload service not available. Please try again later.",
+      });
+    }
 
     res.json({
       success: true,
@@ -297,9 +321,18 @@ export const uploadFile = async (req, res) => {
     });
   } catch (error) {
     console.error("Upload file error:", error);
+
+    let errorMessage = "Failed to upload file";
+
+    if (error.response?.status === 413) {
+      errorMessage = "File too large. Please choose a smaller file.";
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+
     res.status(500).json({
       success: false,
-      message: error.message || "Internal server error",
+      message: errorMessage,
     });
   }
 };

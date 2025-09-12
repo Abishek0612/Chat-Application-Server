@@ -56,17 +56,29 @@ const localUpload = multer({
 });
 
 const isCloudinaryConfigured = () => {
-  return (
-    process.env.CLOUDINARY_CLOUD_NAME &&
-    process.env.CLOUDINARY_API_KEY &&
-    process.env.CLOUDINARY_API_SECRET &&
-    process.env.CLOUDINARY_CLOUD_NAME !== "chat-app"
-  );
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
+
+  return cloudName && apiKey && apiSecret && cloudName !== "chat-app";
 };
 
 export const uploadToCloudinary = async (buffer, folder) => {
+  console.log("Cloudinary config check:", {
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+    apiKey: !!process.env.CLOUDINARY_API_KEY,
+    apiSecret: !!process.env.CLOUDINARY_API_SECRET,
+  });
+
   if (!isCloudinaryConfigured()) {
-    throw new Error("Cloudinary not configured properly");
+    console.error("Cloudinary configuration missing:", {
+      CLOUDINARY_CLOUD_NAME: !!process.env.CLOUDINARY_CLOUD_NAME,
+      CLOUDINARY_API_KEY: !!process.env.CLOUDINARY_API_KEY,
+      CLOUDINARY_API_SECRET: !!process.env.CLOUDINARY_API_SECRET,
+    });
+    throw new Error(
+      "Cloudinary not configured. Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET environment variables."
+    );
   }
 
   return new Promise((resolve, reject) => {
@@ -82,8 +94,10 @@ export const uploadToCloudinary = async (buffer, folder) => {
         },
         (error, result) => {
           if (error) {
+            console.error("Cloudinary upload error:", error);
             reject(error);
           } else {
+            console.log("Cloudinary upload success:", result.secure_url);
             resolve(result.secure_url);
           }
         }

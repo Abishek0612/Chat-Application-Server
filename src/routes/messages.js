@@ -13,7 +13,7 @@ import { upload } from "../middleware/upload.js";
 const router = express.Router();
 
 const sendMessageValidation = [
-  body("content").isLength({ min: 1, max: 1000 }).trim(),
+  body("content").optional().isLength({ max: 1000 }).trim(),
   body("chatId").isString(),
   body("type").optional().isIn(["TEXT", "IMAGE", "FILE", "AUDIO", "VIDEO"]),
 ];

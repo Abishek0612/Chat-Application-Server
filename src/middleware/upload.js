@@ -3,7 +3,12 @@ import multer from "multer";
 const storage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+  const allowedImageTypes = [
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+  ];
   const allowedFileTypes = [
     "image/jpeg",
     "image/png",
@@ -17,9 +22,14 @@ const fileFilter = (req, file, cb) => {
     "video/mpeg",
     "audio/mpeg",
     "audio/wav",
+    "application/zip",
+    "application/x-rar-compressed",
   ];
 
-  if (file.fieldname === "avatar" && allowedTypes.includes(file.mimetype)) {
+  if (
+    file.fieldname === "avatar" &&
+    allowedImageTypes.includes(file.mimetype)
+  ) {
     cb(null, true);
   } else if (
     file.fieldname === "file" &&
@@ -35,6 +45,6 @@ export const upload = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB
+    fileSize: 10 * 1024 * 1024,
   },
 });

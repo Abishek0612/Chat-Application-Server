@@ -13,6 +13,8 @@ import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 import session from "express-session";
 import passport from "passport";
+import path from "path";
+import { fileURLToPath } from "url";
 
 import { connectDB } from "./config/database.js";
 import { configureCloudinary } from "./config/cloudinary.js";
@@ -24,6 +26,9 @@ import authRoutes from "./routes/auth.js";
 import userRoutes from "./routes/users.js";
 import chatRoutes from "./routes/chats.js";
 import messageRoutes from "./routes/messages.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const server = createServer(app);
@@ -90,6 +95,9 @@ app.use(limiter);
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
+// Serve uploaded files statically
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+
 app.use(
   session({
     secret: process.env.SESSION_SECRET || "default-secret",
@@ -127,6 +135,9 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`CORS enabled for origins: ${allowedOrigins.join(", ")}`);
+  console.log(
+    `Static files served from: ${path.join(__dirname, "../uploads")}`
+  );
 });
 
 global.io = io;

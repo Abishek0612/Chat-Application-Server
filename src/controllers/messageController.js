@@ -91,7 +91,15 @@ export const sendMessage = async (req, res) => {
       });
     }
 
-    const { content, chatId, type = "TEXT", receiverId } = req.body;
+    const {
+      content,
+      chatId,
+      type = "TEXT",
+      receiverId,
+      fileUrl,
+      fileName,
+      fileSize,
+    } = req.body;
 
     const chat = await prisma.chat.findUnique({
       where: { id: chatId },
@@ -122,6 +130,9 @@ export const sendMessage = async (req, res) => {
         senderId: req.user.id,
         chatId,
         receiverId,
+        fileUrl,
+        fileName,
+        fileSize: fileSize ? parseInt(fileSize) : null,
       },
       include: {
         sender: {
@@ -256,6 +267,10 @@ export const markAsRead = async (req, res) => {
 
 export const uploadFile = async (req, res) => {
   try {
+    console.log("Upload request received");
+    console.log("File:", req.file);
+    console.log("Body:", req.body);
+
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -263,7 +278,12 @@ export const uploadFile = async (req, res) => {
       });
     }
 
-    const fileUrl = await uploadToCloudinary(req.file.buffer, "chat-files");
+    const folder = req.file.mimetype.startsWith("image/")
+      ? "images"
+      : "chat-files";
+    const fileUrl = await uploadToCloudinary(req.file.buffer, folder);
+
+    console.log("File uploaded to:", fileUrl);
 
     res.json({
       success: true,
@@ -279,7 +299,7 @@ export const uploadFile = async (req, res) => {
     console.error("Upload file error:", error);
     res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: error.message || "Internal server error",
     });
   }
 };

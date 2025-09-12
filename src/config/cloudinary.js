@@ -14,6 +14,9 @@ export const configureCloudinary = () => {
     console.log("Cloudinary configured successfully");
   } else {
     console.log("Cloudinary credentials not provided - file uploads disabled");
+    console.log(
+      "Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET in your environment variables"
+    );
   }
 };
 

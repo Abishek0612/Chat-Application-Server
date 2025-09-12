@@ -127,4 +127,6 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(`CORS enabled for origins: ${allowedOrigins.join(", ")}`);
 });
 
+global.io = io;
+
 export { io };

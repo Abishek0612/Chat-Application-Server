@@ -94,6 +94,29 @@ export const configureSocket = (io) => {
           return;
         }
 
+        const message = await prisma.message.create({
+          data: {
+            content: data.content,
+            type: data.type || "TEXT",
+            senderId: socket.userId,
+            chatId: data.chatId,
+            receiverId: data.receiverId,
+          },
+          include: {
+            sender: {
+              select: {
+                id: true,
+                username: true,
+                firstName: true,
+                lastName: true,
+                avatar: true,
+              },
+            },
+          },
+        });
+
+        io.to(`chat_${data.chatId}`).emit("newMessage", message);
+
         const chatMembers = await prisma.chatMember.findMany({
           where: { chatId: data.chatId },
           include: { user: true },

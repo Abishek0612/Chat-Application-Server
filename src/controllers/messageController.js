@@ -205,9 +205,17 @@ export const deleteMessage = async (req, res) => {
 export const markAsRead = async (req, res) => {
   try {
     const { messageId } = req.params;
+    const userId = req.user.id;
 
     const message = await prisma.message.findUnique({
       where: { id: messageId },
+      include: {
+        chat: {
+          include: {
+            members: true,
+          },
+        },
+      },
     });
 
     if (!message) {
@@ -217,7 +225,11 @@ export const markAsRead = async (req, res) => {
       });
     }
 
-    if (message.receiverId !== req.user.id) {
+    const isMember = message.chat.members.some(
+      (member) => member.userId === userId
+    );
+
+    if (!isMember || message.senderId === userId) {
       return res.status(403).json({
         success: false,
         message: "Access denied",

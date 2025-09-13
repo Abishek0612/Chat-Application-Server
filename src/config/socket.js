@@ -49,16 +49,20 @@ export const configureSocket = (io) => {
     userSockets.get(socket.userId).add(socket.id);
     connectedUsers.set(socket.id, socket.userId);
 
-    await prisma.user.update({
-      where: { id: socket.userId },
-      data: { isOnline: true },
-    });
+    try {
+      await prisma.user.update({
+        where: { id: socket.userId },
+        data: { isOnline: true },
+      });
 
-    socket.broadcast.emit("userOnline", {
-      userId: socket.userId,
-      isOnline: true,
-      user: socket.user,
-    });
+      socket.broadcast.emit("userOnline", {
+        userId: socket.userId,
+        isOnline: true,
+        user: socket.user,
+      });
+    } catch (error) {
+      console.error("Error updating user online status:", error);
+    }
 
     socket.join(`user_${socket.userId}`);
 
@@ -221,19 +225,23 @@ export const configureSocket = (io) => {
         if (userSocketSet.size === 0) {
           userSockets.delete(socket.userId);
 
-          await prisma.user.update({
-            where: { id: socket.userId },
-            data: {
+          try {
+            await prisma.user.update({
+              where: { id: socket.userId },
+              data: {
+                isOnline: false,
+                lastSeen: new Date(),
+              },
+            });
+
+            socket.broadcast.emit("userOffline", {
+              userId: socket.userId,
               isOnline: false,
               lastSeen: new Date(),
-            },
-          });
-
-          socket.broadcast.emit("userOffline", {
-            userId: socket.userId,
-            isOnline: false,
-            lastSeen: new Date(),
-          });
+            });
+          } catch (error) {
+            console.error("Error updating user offline status:", error);
+          }
         }
       }
 

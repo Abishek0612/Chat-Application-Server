@@ -43,7 +43,11 @@ const corsOptions = {
       callback(null, true);
     } else {
       console.log("🔍 CORS blocked origin:", origin);
-      callback(null, true);
+      if (process.env.NODE_ENV === "production") {
+        callback(new Error("Not allowed by CORS"), false);
+      } else {
+        callback(null, true);
+      }
     }
   },
   credentials: true,
@@ -58,10 +62,23 @@ const corsOptions = {
     "Pragma",
   ],
   exposedHeaders: ["set-cookie"],
+  optionsSuccessStatus: 200,
+  preflightContinue: false,
 };
 
 const io = new Server(server, {
-  cors: corsOptions,
+  cors: {
+    origin: allowedOrigins,
+    methods: ["GET", "POST"],
+    allowedHeaders: [
+      "Origin",
+      "X-Requested-With",
+      "Content-Type",
+      "Accept",
+      "Authorization",
+    ],
+    credentials: true,
+  },
   transports: ["websocket", "polling"],
   allowEIO3: true,
 });
@@ -87,6 +104,7 @@ app.options("*", cors(corsOptions));
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
+    contentSecurityPolicy: false,
   })
 );
 app.use(compression());
@@ -112,6 +130,7 @@ app.use(
       secure: process.env.NODE_ENV === "production",
       httpOnly: true,
       maxAge: 24 * 60 * 60 * 1000,
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     },
   })
 );

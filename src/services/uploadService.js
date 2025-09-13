@@ -1,130 +1,100 @@
 import { cloudinary } from "../config/cloudinary.js";
-import multer from "multer";
-import path from "path";
-import fs from "fs";
-
-const uploadDir = "uploads";
-
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-  fs.mkdirSync(`${uploadDir}/avatars`, { recursive: true });
-  fs.mkdirSync(`${uploadDir}/chat-files`, { recursive: true });
-  fs.mkdirSync(`${uploadDir}/images`, { recursive: true });
-}
-
-const localStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    let folder = "chat-files";
-    if (file.fieldname === "avatar") {
-      folder = "avatars";
-    } else if (file.mimetype.startsWith("image/")) {
-      folder = "images";
-    }
-    cb(null, `${uploadDir}/${folder}`);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  },
-});
-
-const localUpload = multer({
-  storage: localStorage,
-  limits: {
-    fileSize: 10 * 1024 * 1024,
-  },
-  fileFilter: (req, file, cb) => {
-    const allowedMimes = [
-      "image/jpeg",
-      "image/png",
-      "image/gif",
-      "image/webp",
-      "application/pdf",
-      "text/plain",
-      "application/msword",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "application/zip",
-      "application/x-rar-compressed",
-    ];
-
-    if (allowedMimes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error("File type not supported"), false);
-    }
-  },
-});
 
 const isCloudinaryConfigured = () => {
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
   const apiKey = process.env.CLOUDINARY_API_KEY;
   const apiSecret = process.env.CLOUDINARY_API_SECRET;
 
-  console.log("Checking Cloudinary config:", {
+  console.log("Cloudinary Environment Check:", {
     hasCloudName: !!cloudName,
     hasApiKey: !!apiKey,
     hasApiSecret: !!apiSecret,
-    cloudName: cloudName ? cloudName.substring(0, 5) + "..." : "missing",
+    cloudName: cloudName ? `${cloudName.substring(0, 3)}...` : "missing",
+    nodeEnv: process.env.NODE_ENV,
   });
 
   return cloudName && apiKey && apiSecret;
 };
 
-export const uploadToCloudinary = async (buffer, folder) => {
-  console.log("uploadToCloudinary called with folder:", folder);
+export const uploadToCloudinary = async (buffer, folder = "chat-app") => {
+  console.log(`Starting Cloudinary upload to folder: ${folder}`);
+  console.log(`Buffer size: ${buffer?.length || 0} bytes`);
+
+  if (!buffer || buffer.length === 0) {
+    throw new Error("No file data provided");
+  }
 
   if (!isCloudinaryConfigured()) {
-    console.error("Cloudinary not configured, falling back to local upload");
+    console.error("Cloudinary configuration missing");
     throw new Error(
-      "File upload service is not properly configured. Please contact the administrator."
+      "File upload service is not configured. Please contact support."
     );
   }
 
   try {
     console.log("Attempting Cloudinary upload...");
 
-    const result = await new Promise((resolve, reject) => {
-      const uploadOptions = {
-        resource_type: "auto",
-        folder: folder || "chat-app",
-        transformation: [
-          { width: 800, height: 800, crop: "limit" },
-          { quality: "auto" },
-        ],
-      };
-
-      console.log("Upload options:", uploadOptions);
-
-      cloudinary.uploader
-        .upload_stream(uploadOptions, (error, result) => {
+    const uploadPromise = new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          resource_type: "auto",
+          folder: folder,
+          transformation: [
+            { width: 800, height: 800, crop: "limit" },
+            { quality: "auto" },
+          ],
+          timeout: 60000,
+        },
+        (error, result) => {
           if (error) {
-            console.error("Cloudinary upload error:", error);
-            reject(error);
+            console.error("Cloudinary upload error:", {
+              message: error.message,
+              name: error.name,
+              http_code: error.http_code,
+            });
+            reject(new Error(`Upload failed: ${error.message}`));
           } else {
-            console.log("Cloudinary upload success:", result.secure_url);
+            console.log("Cloudinary upload successful:", {
+              public_id: result.public_id,
+              secure_url: result.secure_url,
+              format: result.format,
+              bytes: result.bytes,
+            });
             resolve(result.secure_url);
           }
-        })
-        .end(buffer);
+        }
+      );
+
+      uploadStream.end(buffer);
     });
+
+    const result = await Promise.race([
+      uploadPromise,
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error("Upload timeout after 60 seconds")),
+          60000
+        )
+      ),
+    ]);
 
     return result;
   } catch (error) {
-    console.error("Cloudinary upload failed:", error);
-    throw new Error("Failed to upload file. Please try again later.");
+    console.error("Upload to Cloudinary failed:", {
+      message: error.message,
+      stack: error.stack,
+    });
+
+    if (error.message.includes("timeout")) {
+      throw new Error("Upload timed out. Please try with a smaller file.");
+    }
+
+    if (error.message.includes("Invalid image")) {
+      throw new Error(
+        "Invalid image format. Please use JPEG, PNG, GIF, or WebP."
+      );
+    }
+
+    throw new Error("Upload failed. Please try again later.");
   }
 };
-
-export const uploadFileLocal = async (file) => {
-  const baseUrl = process.env.BASE_URL || "http://localhost:5000";
-  const filePath = file.path.replace(/\\/g, "/");
-
-  return {
-    fileUrl: `${baseUrl}/${filePath}`,
-    fileName: file.originalname,
-    fileSize: file.size,
-    mimeType: file.mimetype,
-  };
-};
-
-export { localUpload };

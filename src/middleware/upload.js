@@ -37,7 +37,7 @@ const fileFilter = (req, file, cb) => {
   ) {
     cb(null, true);
   } else {
-    cb(new Error("Invalid file type"), false);
+    cb(new Error(`Invalid file type: ${file.mimetype}`), false);
   }
 };
 
@@ -48,3 +48,37 @@ export const upload = multer({
     fileSize: 10 * 1024 * 1024,
   },
 });
+
+export const handleMulterError = (error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    console.error("Multer error:", error);
+
+    if (error.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({
+        success: false,
+        message: "File too large. Maximum size is 10MB.",
+      });
+    }
+
+    if (error.code === "LIMIT_UNEXPECTED_FILE") {
+      return res.status(400).json({
+        success: false,
+        message: "Unexpected file field.",
+      });
+    }
+
+    return res.status(400).json({
+      success: false,
+      message: error.message || "File upload error",
+    });
+  }
+
+  if (error && error.message.includes("Invalid file type")) {
+    return res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+
+  next(error);
+};

@@ -8,7 +8,7 @@ import {
   uploadFile,
 } from "../controllers/messageController.js";
 import { authenticate } from "../middleware/auth.js";
-import { upload } from "../middleware/upload.js";
+import { upload, handleMulterError } from "../middleware/upload.js";
 
 const router = express.Router();
 
@@ -25,6 +25,6 @@ router.post("/", sendMessageValidation, sendMessage);
 router.delete("/:messageId", deleteMessage);
 router.put("/:messageId/read", markAsRead);
 
-router.post("/upload", upload.single("file"), uploadFile);
+router.post("/upload", upload.single("file"), handleMulterError, uploadFile);
 
 export default router;

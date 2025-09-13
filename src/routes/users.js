@@ -15,7 +15,7 @@ import {
   rejectFriendRequest,
 } from "../controllers/userController.js";
 import { authenticate } from "../middleware/auth.js";
-import { upload } from "../middleware/upload.js";
+import { upload, handleMulterError } from "../middleware/upload.js";
 
 const router = express.Router();
 
@@ -34,7 +34,12 @@ router.get("/contacts", getUserContacts);
 router.get("/:id", getUserById);
 
 router.put("/profile", updateProfileValidation, updateProfile);
-router.post("/avatar", upload.single("avatar"), uploadAvatar);
+router.post(
+  "/avatar",
+  upload.single("avatar"),
+  handleMulterError,
+  uploadAvatar
+);
 
 router.post("/contacts/:userId", addContact);
 router.delete("/contacts/:userId", removeContact);

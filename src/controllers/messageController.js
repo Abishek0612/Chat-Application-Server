@@ -281,19 +281,29 @@ export const markAsRead = async (req, res) => {
 
 export const uploadFile = async (req, res) => {
   try {
-    console.log("Upload request received");
-    console.log("File:", req.file);
-    console.log("User:", req.user?.id);
-    console.log("Cloudinary env check:", {
-      hasCloudName: !!process.env.CLOUDINARY_CLOUD_NAME,
-      hasApiKey: !!process.env.CLOUDINARY_API_KEY,
-      hasApiSecret: !!process.env.CLOUDINARY_API_SECRET,
+    console.log("=== FILE UPLOAD REQUEST ===");
+    console.log("Request headers:", req.headers);
+    console.log("File info:", {
+      fieldname: req.file?.fieldname,
+      originalname: req.file?.originalname,
+      mimetype: req.file?.mimetype,
+      size: req.file?.size,
     });
+    console.log("User ID:", req.user?.id);
 
     if (!req.file) {
+      console.error("No file in request");
       return res.status(400).json({
         success: false,
         message: "No file uploaded",
+      });
+    }
+
+    if (!req.file.buffer || req.file.buffer.length === 0) {
+      console.error("File buffer is empty");
+      return res.status(400).json({
+        success: false,
+        message: "File data is corrupted or empty",
       });
     }
 
@@ -301,26 +311,29 @@ export const uploadFile = async (req, res) => {
       ? "images"
       : "chat-files";
 
-    let fileUrl;
+    console.log(`Attempting upload to folder: ${folder}`);
 
+    let fileUrl;
     try {
       fileUrl = await uploadToCloudinary(req.file.buffer, folder);
-      console.log("File uploaded to Cloudinary:", fileUrl);
-    } catch (cloudinaryError) {
-      console.error("Cloudinary upload failed:", cloudinaryError);
+      console.log("Upload successful, URL:", fileUrl);
+    } catch (uploadError) {
+      console.error("Cloudinary upload error:", {
+        message: uploadError.message,
+        stack: uploadError.stack,
+      });
+
       return res.status(500).json({
         success: false,
-        message:
-          cloudinaryError.message ||
-          "File upload service not available. Please try again later.",
+        message: uploadError.message || "File upload failed",
         error:
           process.env.NODE_ENV === "development"
-            ? cloudinaryError.message
+            ? uploadError.message
             : undefined,
       });
     }
 
-    res.json({
+    const response = {
       success: true,
       message: "File uploaded successfully",
       data: {
@@ -329,19 +342,35 @@ export const uploadFile = async (req, res) => {
         fileSize: req.file.size,
         mimeType: req.file.mimetype,
       },
-    });
+    };
+
+    console.log("Sending response:", response);
+    res.json(response);
   } catch (error) {
-    console.error("Upload file error:", error);
+    console.error("=== UPLOAD ERROR ===");
+    console.error("Error details:", {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+    });
 
     let errorMessage = "Failed to upload file";
+    let statusCode = 500;
 
-    if (error.response?.status === 413) {
+    if (error.message?.includes("timeout")) {
+      errorMessage = "Upload timed out. Please try with a smaller file.";
+      statusCode = 408;
+    } else if (error.message?.includes("File too large")) {
       errorMessage = "File too large. Please choose a smaller file.";
+      statusCode = 413;
+    } else if (error.message?.includes("Invalid")) {
+      errorMessage = error.message;
+      statusCode = 400;
     } else if (error.message) {
       errorMessage = error.message;
     }
 
-    res.status(500).json({
+    res.status(statusCode).json({
       success: false,
       message: errorMessage,
       error: process.env.NODE_ENV === "development" ? error.message : undefined,

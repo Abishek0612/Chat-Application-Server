@@ -154,6 +154,10 @@ export const updateProfile = async (req, res) => {
 
 export const uploadAvatar = async (req, res) => {
   try {
+    console.log("Avatar upload request received");
+    console.log("File:", req.file);
+    console.log("User:", req.user?.id);
+
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -161,7 +165,24 @@ export const uploadAvatar = async (req, res) => {
       });
     }
 
-    const avatarUrl = await uploadToCloudinary(req.file.buffer, "avatars");
+    let avatarUrl;
+
+    try {
+      avatarUrl = await uploadToCloudinary(req.file.buffer, "avatars");
+      console.log("Avatar uploaded to Cloudinary:", avatarUrl);
+    } catch (cloudinaryError) {
+      console.error("Avatar upload to Cloudinary failed:", cloudinaryError);
+      return res.status(500).json({
+        success: false,
+        message:
+          cloudinaryError.message ||
+          "Avatar upload service not available. Please try again later.",
+        error:
+          process.env.NODE_ENV === "development"
+            ? cloudinaryError.message
+            : undefined,
+      });
+    }
 
     const user = await prisma.user.update({
       where: { id: req.user.id },
@@ -193,7 +214,8 @@ export const uploadAvatar = async (req, res) => {
     console.error("Upload avatar error:", error);
     res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: error.message || "Internal server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };

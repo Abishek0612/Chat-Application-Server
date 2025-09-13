@@ -31,7 +31,7 @@ const localStorage = multer.diskStorage({
 const localUpload = multer({
   storage: localStorage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB
+    fileSize: 10 * 1024 * 1024,
   },
   fileFilter: (req, file, cb) => {
     const allowedMimes = [
@@ -60,39 +60,43 @@ const isCloudinaryConfigured = () => {
   const apiKey = process.env.CLOUDINARY_API_KEY;
   const apiSecret = process.env.CLOUDINARY_API_SECRET;
 
-  return cloudName && apiKey && apiSecret && cloudName !== "chat-app";
+  console.log("Checking Cloudinary config:", {
+    hasCloudName: !!cloudName,
+    hasApiKey: !!apiKey,
+    hasApiSecret: !!apiSecret,
+    cloudName: cloudName ? cloudName.substring(0, 5) + "..." : "missing",
+  });
+
+  return cloudName && apiKey && apiSecret;
 };
 
 export const uploadToCloudinary = async (buffer, folder) => {
-  console.log("Cloudinary config check:", {
-    cloudName: process.env.CLOUDINARY_CLOUD_NAME,
-    apiKey: !!process.env.CLOUDINARY_API_KEY,
-    apiSecret: !!process.env.CLOUDINARY_API_SECRET,
-  });
+  console.log("uploadToCloudinary called with folder:", folder);
 
   if (!isCloudinaryConfigured()) {
-    console.error("Cloudinary configuration missing:", {
-      CLOUDINARY_CLOUD_NAME: !!process.env.CLOUDINARY_CLOUD_NAME,
-      CLOUDINARY_API_KEY: !!process.env.CLOUDINARY_API_KEY,
-      CLOUDINARY_API_SECRET: !!process.env.CLOUDINARY_API_SECRET,
-    });
+    console.error("Cloudinary not configured, falling back to local upload");
     throw new Error(
-      "Cloudinary not configured. Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET environment variables."
+      "File upload service is not properly configured. Please contact the administrator."
     );
   }
 
-  return new Promise((resolve, reject) => {
-    cloudinary.uploader
-      .upload_stream(
-        {
-          resource_type: "auto",
-          folder,
-          transformation: [
-            { width: 800, height: 800, crop: "limit" },
-            { quality: "auto" },
-          ],
-        },
-        (error, result) => {
+  try {
+    console.log("Attempting Cloudinary upload...");
+
+    const result = await new Promise((resolve, reject) => {
+      const uploadOptions = {
+        resource_type: "auto",
+        folder: folder || "chat-app",
+        transformation: [
+          { width: 800, height: 800, crop: "limit" },
+          { quality: "auto" },
+        ],
+      };
+
+      console.log("Upload options:", uploadOptions);
+
+      cloudinary.uploader
+        .upload_stream(uploadOptions, (error, result) => {
           if (error) {
             console.error("Cloudinary upload error:", error);
             reject(error);
@@ -100,10 +104,15 @@ export const uploadToCloudinary = async (buffer, folder) => {
             console.log("Cloudinary upload success:", result.secure_url);
             resolve(result.secure_url);
           }
-        }
-      )
-      .end(buffer);
-  });
+        })
+        .end(buffer);
+    });
+
+    return result;
+  } catch (error) {
+    console.error("Cloudinary upload failed:", error);
+    throw new Error("Failed to upload file. Please try again later.");
+  }
 };
 
 export const uploadFileLocal = async (file) => {

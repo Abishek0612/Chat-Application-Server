@@ -283,7 +283,12 @@ export const uploadFile = async (req, res) => {
   try {
     console.log("Upload request received");
     console.log("File:", req.file);
-    console.log("Body:", req.body);
+    console.log("User:", req.user?.id);
+    console.log("Cloudinary env check:", {
+      hasCloudName: !!process.env.CLOUDINARY_CLOUD_NAME,
+      hasApiKey: !!process.env.CLOUDINARY_API_KEY,
+      hasApiSecret: !!process.env.CLOUDINARY_API_SECRET,
+    });
 
     if (!req.file) {
       return res.status(400).json({
@@ -305,7 +310,13 @@ export const uploadFile = async (req, res) => {
       console.error("Cloudinary upload failed:", cloudinaryError);
       return res.status(500).json({
         success: false,
-        message: "File upload service not available. Please try again later.",
+        message:
+          cloudinaryError.message ||
+          "File upload service not available. Please try again later.",
+        error:
+          process.env.NODE_ENV === "development"
+            ? cloudinaryError.message
+            : undefined,
       });
     }
 
@@ -333,6 +344,7 @@ export const uploadFile = async (req, res) => {
     res.status(500).json({
       success: false,
       message: errorMessage,
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };

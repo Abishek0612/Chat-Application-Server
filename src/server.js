@@ -1,7 +1,4 @@
-import dotenv from "dotenv";
-if (process.env.NODE_ENV !== "production") {
-  dotenv.config({ path: `.env.development` });
-}
+import "./config/env.js";
 
 import express from "express";
 import { createServer } from "http";
@@ -16,7 +13,7 @@ import passport from "passport";
 import path from "path";
 import { fileURLToPath } from "url";
 
-import { connectDB } from "./config/database.js";
+import { connectDB, prisma } from "./config/database.js";
 import { configureCloudinary } from "./config/cloudinary.js";
 import { configurePassport } from "./config/passport.js";
 import { configureSocket } from "./config/socket.js";
@@ -26,6 +23,8 @@ import authRoutes from "./routes/auth.js";
 import userRoutes from "./routes/users.js";
 import chatRoutes from "./routes/chats.js";
 import messageRoutes from "./routes/messages.js";
+
+console.log(" All imports loaded successfully");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -45,7 +44,7 @@ const corsOptions = {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      console.log("CORS blocked origin:", origin);
+      console.log("🔍 CORS blocked origin:", origin);
       callback(null, true);
     }
   },

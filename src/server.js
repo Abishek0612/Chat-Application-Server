@@ -60,12 +60,18 @@ const corsOptions = {
     "Authorization",
     "Cache-Control",
     "Pragma",
+    "Cross-Origin-Opener-Policy",
   ],
   exposedHeaders: ["set-cookie"],
   optionsSuccessStatus: 200,
   preflightContinue: false,
 };
 
+app.use((req, res, next) => {
+  res.header("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+  res.header("Cross-Origin-Embedder-Policy", "require-corp");
+  next();
+});
 const io = new Server(server, {
   cors: {
     origin: allowedOrigins,

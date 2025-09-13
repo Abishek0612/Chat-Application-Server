@@ -1,12 +1,11 @@
 import express from "express";
-import passport from "passport";
 import { body } from "express-validator";
 import {
   register,
   login,
   logout,
   getProfile,
-  googleCallback,
+  googleLogin,
 } from "../controllers/authController.js";
 import { authenticate } from "../middleware/auth.js";
 
@@ -31,32 +30,6 @@ router.post("/register", registerValidation, register);
 router.post("/login", loginValidation, login);
 router.post("/logout", authenticate, logout);
 router.get("/profile", authenticate, getProfile);
-
-if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-  router.get(
-    "/google",
-    passport.authenticate("google", { scope: ["profile", "email"] })
-  );
-
-  router.get(
-    "/google/callback",
-    passport.authenticate("google", { failureRedirect: "/auth/error" }),
-    googleCallback
-  );
-} else {
-  router.get("/google", (req, res) => {
-    res.status(501).json({
-      success: false,
-      message: "Google OAuth is not configured on this server",
-    });
-  });
-
-  router.get("/google/callback", (req, res) => {
-    res.status(501).json({
-      success: false,
-      message: "Google OAuth is not configured on this server",
-    });
-  });
-}
+router.post("/google-login", googleLogin);
 
 export default router;

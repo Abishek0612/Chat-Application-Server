@@ -9,13 +9,11 @@ import compression from "compression";
 import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 import session from "express-session";
-import passport from "passport";
 import path from "path";
 import { fileURLToPath } from "url";
 
 import { connectDB, prisma } from "./config/database.js";
 import { configureCloudinary } from "./config/cloudinary.js";
-import { configurePassport } from "./config/passport.js";
 import { configureSocket } from "./config/socket.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 
@@ -118,12 +116,8 @@ app.use(
   })
 );
 
-app.use(passport.initialize());
-app.use(passport.session());
-
 await connectDB();
 configureCloudinary();
-configurePassport();
 configureSocket(io);
 
 app.get("/", (req, res) => {

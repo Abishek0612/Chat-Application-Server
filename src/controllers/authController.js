@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { validationResult } from "express-validator";
 import { prisma } from "../config/database.js";
 import { generateToken, hashPassword } from "../utils/helpers.js";
+import { OAuth2Client } from "google-auth-library";
 
 export const register = async (req, res) => {
   try {
@@ -185,6 +186,54 @@ export const getProfile = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Internal server error",
+    });
+  }
+};
+
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+export const googleLogin = async (req, res) => {
+  const { token } = req.body;
+  try {
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const { name, email, picture, given_name, family_name } =
+      ticket.getPayload();
+
+    let user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user) {
+      // If user doesn't exist, create a new one
+      const username = email.split("@")[0] + "_" + Date.now();
+      user = await prisma.user.create({
+        data: {
+          email: email,
+          username: username,
+          firstName: given_name,
+          lastName: family_name,
+          avatar: picture,
+          provider: "google",
+        },
+      });
+    }
+
+    const appToken = generateToken(user.id);
+    const { password, ...userWithoutPassword } = user;
+
+    res.status(200).json({
+      success: true,
+      message: "Google login successful",
+      data: { user: userWithoutPassword, token: appToken },
+    });
+  } catch (error) {
+    console.error("Google login error:", error);
+    res.status(400).json({
+      success: false,
+      message: "Invalid Google token",
     });
   }
 };
